@@ -74,7 +74,7 @@ def rope_apply(x: torch.Tensor, grid_sizes: torch.Tensor, freqs: torch.Tensor) -
 
         y_c[idx, :seq_len] = x_c[idx, :seq_len] * freq_grid
 
-    y = torch.view_as_real(y_c).reshape(B, T, N, -1).float()
+    y = torch.view_as_real(y_c).reshape(B, T, N, -1).bfloat16()
     # assert rope_apply_original(x, grid_sizes, freqs).allclose(y, atol=1e-5)
     return y
 
@@ -122,7 +122,7 @@ class WanRMSNorm(nn.Module):
         Args:
             x(Tensor): Shape [B, L, C]
         """
-        return self._norm(x.float()).type_as(x) * self.weight
+        return self._norm(x.bfloat16()).type_as(x) * self.weight
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
@@ -138,7 +138,7 @@ class WanLayerNorm(nn.LayerNorm):
         Args:
             x(Tensor): Shape [B, L, C]
         """
-        return super().forward(x.float()).type_as(x)
+        return super().forward(x.bfloat16()).type_as(x)
 
 
 class WanSelfAttention(nn.Module):
@@ -355,24 +355,24 @@ class WanAttentionBlock(nn.Module):
             grid_sizes(Tensor): Shape [B, 3], the second dimension contains (F, H, W)
             freqs(Tensor): Rope freqs, shape [1024, C / num_heads / 2]
         """
-        assert e.dtype == torch.float32
-        with torch.amp.autocast('cuda', dtype=torch.float32):
+        assert e.dtype == torch.bfloat16
+        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             e = (self.modulation.unsqueeze(0) + e).chunk(6, dim=2)
-        assert e[0].dtype == torch.float32
+        assert e[0].dtype == torch.bfloat16
 
         # self-attention
         y = self.self_attn(
-            self.norm1(x).float() * (1 + e[1].squeeze(2)) + e[0].squeeze(2),
+            self.norm1(x).bfloat16() * (1 + e[1].squeeze(2)) + e[0].squeeze(2),
             seq_lens, grid_sizes, freqs)
-        with torch.amp.autocast('cuda', dtype=torch.float32):
+        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             x = x + y * e[2].squeeze(2)
 
         # cross-attention & ffn function
         def cross_attn_ffn(x, context, context_lens, e):
             x = x + self.cross_attn(self.norm3(x), context, context_lens)
             y = self.ffn(
-                self.norm2(x).float() * (1 + e[4].squeeze(2)) + e[3].squeeze(2))
-            with torch.amp.autocast('cuda', dtype=torch.float32):
+                self.norm2(x).bfloat16() * (1 + e[4].squeeze(2)) + e[3].squeeze(2))
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 x = x + y * e[5].squeeze(2)
             return x
 
@@ -403,8 +403,8 @@ class Head(nn.Module):
             x(Tensor): Shape [B, L1, C]
             e(Tensor): Shape [B, L1, C]
         """
-        assert e.dtype == torch.float32
-        with torch.amp.autocast('cuda', dtype=torch.float32):
+        assert e.dtype == torch.bfloat16
+        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             e = (self.modulation.unsqueeze(0) + e.unsqueeze(2)).chunk(2, dim=2)
             x = (
                 self.head(
@@ -580,14 +580,13 @@ class WanModel(ModelMixin, ConfigMixin):
         # time embeddings
         if t.dim() == 1:
             t = t.expand(t.size(0), seq_len)
-        with torch.amp.autocast('cuda', dtype=torch.float32):
+        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             bt = t.size(0)
             t = t.flatten()
             e = self.time_embedding(
                 sinusoidal_embedding_1d(self.freq_dim,
-                                        t).unflatten(0, (bt, seq_len)).float())
+                                        t).unflatten(0, (bt, seq_len)).bfloat16())
             e0 = self.time_projection(e).unflatten(2, (6, self.dim))
-            assert e.dtype == torch.float32 and e0.dtype == torch.float32
 
         # context
         context_lens = None
@@ -615,7 +614,7 @@ class WanModel(ModelMixin, ConfigMixin):
 
         # unpatchify
         x = self.unpatchify(x, grid_sizes)
-        return [u.float() for u in x]
+        return [u.bfloat16() for u in x]
 
     def unpatchify(self, x, grid_sizes):
         r"""

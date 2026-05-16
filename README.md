@@ -119,6 +119,8 @@ huggingface-cli download motus-robotics/Motus_robotwin2 --local-dir ./pretrained
 # Download foundation models
 huggingface-cli download Qwen/Qwen3-VL-2B-Instruct --local-dir ./pretrained_models/Qwen3-VL-2B-Instruct
 huggingface-cli download Wan-AI/Wan2.2-TI2V-5B --local-dir ./pretrained_models/Wan2.2-TI2V-5B
+#new add
+huggingface-cli download alibaba-pai/Wan2.2-Fun-5B-Control  --local-dir ./pretrained_models/Wan2.2-Fun-5B-Control
 ```
 
 **Update config paths** in your embodiment-specific config file (e.g., `configs/robotwin.yaml`, `configs/ac_one.yaml`, or other embodiment configs):
@@ -198,4 +200,3 @@ If you find our work helpful, please cite us:
 ```
 
 Thank you!
-

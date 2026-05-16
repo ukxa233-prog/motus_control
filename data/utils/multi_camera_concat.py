@@ -1,94 +1,84 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Multi-Camera View Concatenation Utility
-
-Simple utility for concatenating three camera views:
-- Head camera: Keep original size
-- Left/Right wrist cameras: Resize to half and stack vertically
-
-"""
 import cv2
 import numpy as np
+import argparse
+import os
 from typing import Optional, Tuple
 
-
 def resize_and_concatenate_frames(
-    self, 
     head_img: np.ndarray, 
     left_img: np.ndarray, 
     right_img: np.ndarray
 ) -> Optional[np.ndarray]:
     """
-    Concatenate three camera views in T-shape layout:
-    - Top: Head camera (keep original size, e.g., 480x640)
-    - Bottom left: Left wrist camera (resize to half, e.g., 240x320)
-    - Bottom right: Right wrist camera (resize to half, e.g., 240x320)
-    Final output: 720x640 (height x width)
-        
-    Args:
-        head_img: Head camera image (keep original size)
-        left_img: Left wrist camera image (resize to half size)  
-        right_img: Right wrist camera image (resize to half size)
-            
-    Returns:
-        Concatenated image with T-shape layout
+    将三个相机视角拼接为 T 字型布局：
+    - 上方：头部相机 (保持原大，如 480x640)
+    - 下左：左手腕相机 (缩小至 1/2，如 240x320)
+    - 下右：右手腕相机 (缩小至 1/2，如 240x320)
+    最终输出：720x640 (高 x 宽)
     """
     try:
-        # Get original dimensions
+        # 获取原始维度
         orig_h, orig_w = head_img.shape[:2]
             
-        # Resize wrist cameras to half size
+        # 将手腕相机缩放为一半大小
         half_h, half_w = orig_h // 2, orig_w // 2
+        
+        # 确保缩放后的宽度之和等于头部相机宽度
+        # 使用 (half_w, half_h) 因为 cv2.resize 接收 (宽, 高)
         left_resized = cv2.resize(left_img, (half_w, half_h))
-        right_resized = cv2.resize(right_img, (half_w, half_h))
+        right_resized = cv2.resize(right_img, (orig_w - half_w, half_h)) 
             
-        # Concatenate left and right wrist cameras horizontally for bottom row
+        # 水平拼接手腕相机图像作为底行
         bottom_row = np.hstack([left_resized, right_resized])
             
-        # Create final T-shape layout:
-        # Top row: head camera (orig_h x orig_w)
-        # Bottom row: combined wrist cameras (half_h x orig_w)
+        # 垂直拼接：顶部头部相机 + 底部手腕行
         combined = np.vstack([head_img, bottom_row])
             
         return combined
     except Exception as e:
+        print(f"拼接失败: {e}")
         return None
 
-
 def get_concatenated_dimensions(original_shape: Tuple[int, int]) -> Tuple[int, int]:
-    """
-    Calculate output dimensions for concatenated frame.
-    
-    Args:
-        original_shape: (height, width) of original images
-        
-    Returns:
-        (height, width) of concatenated result
-    """
+    """计算拼接后的输出维度 (高, 宽)"""
     h, w = original_shape
-    # Final: (3w/2) × h
-    return h, int(w * 1.5)
+    # 最终高度 = 原高 + 0.5*原高 = 1.5h; 宽度不变
+    return int(h * 1.5), w
 
+def main():
+    parser = argparse.ArgumentParser(description="多摄像头视角拼接工具")
+    parser.add_argument("--head_image", required=True, help="头部相机图片路径")
+    parser.add_argument("--left_image", required=True, help="左手腕相机图片路径")
+    parser.add_argument("--right_image", required=True, help="右手腕相机图片路径")
+    parser.add_argument("--output", required=True, help="拼接结果保存路径")
+    
+    args = parser.parse_args()
 
-# Example usage
-if __name__ == "__main__":
-    # Create dummy test images
-    h, w = 240, 320
-    
-    head_img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
-    left_img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)  
-    right_img = np.random.randint(0, 255, (h, w, 3), dtype=np.uint8)
-    
-    # Test concatenation
-    result = resize_and_concatenate_frames(head_img, left_img, right_img)
+    # 读取图像
+    head = cv2.imread(args.head_image)
+    left = cv2.imread(args.left_image)
+    right = cv2.imread(args.right_image)
+
+    if head is None or left is None or right is None:
+        print("错误: 无法读取输入图片，请检查路径。")
+        return
+
+    # 执行拼接
+    result = resize_and_concatenate_frames(head, left, right)
     
     if result is not None:
-        print(f"Original shape: {head_img.shape}")
-        print(f"Concatenated shape: {result.shape}")
-        print(f"Expected shape: {get_concatenated_dimensions((h, w))}")
-        
-        # Save test result (optional)
-        # cv2.imwrite("test_concatenated.jpg", result)
+        # 确保输出目录存在
+        output_dir = os.path.dirname(args.output)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        cv2.imwrite(args.output, result)
+        print(f"成功保存拼接图至: {args.output}")
+        print(f"结果尺寸: {result.shape} (高, 宽, 通道)")
     else:
-        print("Concatenation failed")
+        print("处理失败。")
+
+if __name__ == "__main__":
+    main()

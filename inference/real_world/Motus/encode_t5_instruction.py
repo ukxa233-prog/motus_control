@@ -36,7 +36,7 @@ def main():
     parser.add_argument(
         "--wan_path",
         type=str,
-        default="/share/home/bhz/pretrained_models",
+        default="/home/a100/youjingzhou/codes/Motus/pretrained_models",
         help="Path to WAN pretrained models directory"
     )
     parser.add_argument(
